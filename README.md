@@ -5,7 +5,7 @@
 
 ## Introduction
 
-Live minute chart feeded by kraken trought websocket.
+Live minute chart feeded by kraken through websocket.
 
 ## Installation
 

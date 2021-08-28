@@ -49,19 +49,51 @@ labelFormat:str=" {:8.2f} ", symbols:List[str]=["┼", "┤", "├", "│", "─
 	# Drawing labels
 	for y in range(rows):
 		label = labelFormat.format( maxVal-(y+1)*stepVal )
+		colorLeft = "WHITE"
+		colorRight = "WHITE"
 		scaleFirst = scale(chartData[0])
 		scaleLast = scale(chartData[-1])
+		bestPrice = scale(max(chartData))
+		worstPrice = scale(min(chartData))
+		if bestPrice != worstPrice and bestPrice == y:
+			colorLeft = "GREEN"
+		elif bestPrice != worstPrice and worstPrice == y:
+			colorLeft = "RED"
+		elif scaleFirst == y:
+			colorLeft = "CYAN"
+		if bestPrice != worstPrice and bestPrice == y:
+			colorRight = "GREEN"
+		elif bestPrice != worstPrice and worstPrice == y:
+			colorRight = "RED"
+		elif scaleLast == y:
+			colorRight = "CYAN"
+		#
+		#
+		# if scaleFirst == y:
+		# 	colorLeft = "CYAN"
+		# elif bestPrice != worstPrice:
+		# 	if bestPrice == y:
+		# 		colorLeft = "GREEN"
+		# 	if worstPrice == y:
+		# 		colorLeft = "RED"
+		# if scaleLast == y:
+		# 	colorRight = "CYAN"
+		# elif bestPrice != worstPrice:
+		# 	if bestPrice == y:
+		# 		colorRight = "GREEN"
+		# 	if worstPrice == y:
+		# 		colorRight = "RED"
 		screen.addstr(
 			yStart + y,
 			xStart,
 			label,
-			curses.color_pair(COLORS["CYAN" if scaleFirst==y else "WHITE"]),
+			curses.color_pair(COLORS[colorLeft]),
 		)
 		screen.addstr(
 			yStart + y,
 			xEnd - labelLength,
 			label,
-			curses.color_pair(COLORS["CYAN" if scaleLast==y else "WHITE"]),
+			curses.color_pair(COLORS[colorRight]),
 		)
 		#
 		screen.addstr(
