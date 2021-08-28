@@ -1,8 +1,8 @@
 # Builtin modules
 import curses
 from time import sleep, time
-from threading import Thread, Event, Lock
 from typing import Dict, List, Any, TYPE_CHECKING
+from threading import Lock
 from dataclasses import dataclass
 # Third party modules
 # Local modules
@@ -39,81 +39,112 @@ class MainModule:
 	prices:List[float]
 	priceCaches:List[float]
 	lastTimestamp:float
-	closeEvent:Event
+	tickerCounter:int
 	pricesLock:Lock
 	terminalSize:YX
 	screen:Any
 	currency:str
-	thr:Thread
 	def __init__(self, currency:str="btc") -> None:
 		self.terminalSize  = YX(0, 0)
-		self.closeEvent    = Event()
 		self.pricesLock    = Lock()
 		self.lastTimestamp = 0
+		self.tickerCounter = 0
 		self.prices        = []
 		self.priceCaches   = []
 	def _write(self, text:str, color:str="WHITE") -> None:
 		self.screen.addstr(text, curses.color_pair(COLORS[color]))
 	def _writeN(self, text:str, length:int, color:str="WHITE") -> None:
 		self.screen.addnstr(text, length, curses.color_pair(COLORS[color]))
-	def _fetchFirst(self) -> None: ...
+	def _fetchHistory(self) -> None: ...
 	def _fetchThreadLoop(self) -> None: ...
+	def _start(self) -> None: ...
+	def _close(self) -> None: ...
 	def _loop(self, screen:Any) -> None:
 		try:
 			try:
-				curses.start_color()
 				curses.use_default_colors()
 				for i in range(curses.COLORS):
 					curses.init_pair(i+1, i, -1)
 				screen.attron( curses.color_pair(COLORS["WHITE"]) )
 				curses.curs_set(0)
 			except:
-				curses.initscr()
+				pass
 			screen.timeout(0)
 			screen.clear()
 			screen.addstr("Loading prices...")
 			screen.refresh()
 			self.screen = screen
+			doRefresh = False
+			lastData = 0.0, 0
+			lastTS = 0
 			while True:
-				sleep(1)
-				screen.clear()
+				sleep(0.1)
+				c = self.screen.getch()
+				if c == ord('q'):
+					break
+				doRefresh = False
 				tmpTerminalSize = YX(*screen.getmaxyx())
 				if tmpTerminalSize != self.terminalSize:
 					self.terminalSize = tmpTerminalSize
+					doRefresh = True
 				if self.terminalSize.x <= 30 or self.terminalSize.y <= 15:
+					screen.clear()
 					self._writeN("No place to print", 17, "RED")
 					screen.refresh()
 					continue
 				with self.pricesLock:
 					if time()-self.lastTimestamp > 60:
-						if not self.priceCaches:
+						if self.tickerCounter%5 == 0:
+							self.prices.clear()
+							self._fetchHistory()
 							self.prices.append(self.prices[-1])
 						else:
-							self.prices.append(sum(self.priceCaches) / len(self.priceCaches))
-							self.priceCaches.clear()
+							if not self.priceCaches:
+								self.prices.append(self.prices[-1])
+							else:
+								self.prices.append(sum(self.priceCaches) / len(self.priceCaches))
+								self.priceCaches.clear()
+						self.tickerCounter += 1
 						self.lastTimestamp = int(time() // 60 * 60)
-					else:
-						if self.priceCaches:
-							self.prices[-1] = sum(self.priceCaches) / len(self.priceCaches)
+						doRefresh = True
+					elif self.priceCaches:
+						pcs = sum(self.priceCaches)
+						pcl = len(self.priceCaches)
+						if lastData != (pcs, pcl):
+							self.prices[-1] = pcs / pcl
 							self.priceCaches.clear()
+							lastData = pcs, pcl
+							doRefresh = True
+				if lastTS != int(time()%60):
+					lastTS = int(time()%60)
+					doRefresh = True
+				if not doRefresh:
+					continue
+				screen.clear()
 				# Parsing cache
 				screen.move(0, 0)
 				self._write("BTC price: ")
 				self._write("{:.2F}".format(self.prices[-1]), "RED" if self.prices[-1] < self.prices[-2] else "GREEN")
-				self._write(" USD ")
+				self._write(" USD | ")
 				self._write("{}".format(60-int(time()-self.lastTimestamp)), "YELLOW")
 				self._write(" seconds left for the next tick. [{} tickers in cache]\n".format(len(self.prices)))
 				self._write("Changes: ")
-				for i, tDiff in enumerate([
-					TickerDiff(self.prices[-1], self.prices[-2]),
-					TickerDiff(self.prices[-1], self.prices[-16]),
-					TickerDiff(self.prices[-1], self.prices[-31]),
-					TickerDiff(self.prices[-1], self.prices[-61]),
+				for i, (d, tDiff) in enumerate([
+					("1 min:   ", TickerDiff(self.prices[-1], self.prices[-2])),
+					("15 min:  ", TickerDiff(self.prices[-1], self.prices[-16])),
+					("30 min:  ", TickerDiff(self.prices[-1], self.prices[-31])),
+					("1 hour:  ", TickerDiff(self.prices[-1], self.prices[-61])),
+					("12 hour: ", TickerDiff(self.prices[-1], self.prices[-721])),
 				]):
 					if i > 0:
-						self._write(" : ")
-					self._write("{sign}{val:.2F} ({sign}{perc:.2F}%)".format(**tDiff.__dict__), tDiff.color)
-				self._write(" (1min:15min:30min:1hour)")
+						d = " | " + d
+					text = "{sign}{val:.2F} ({sign}{perc:.2F}%)".format(**tDiff.__dict__)
+					cy, cx = screen.getyx()
+					if len(text)+len(d) >= (self.terminalSize.x-cx):
+						self._write("\n")
+						d = "         "+d[3:]
+					self._write(d)
+					self._write(text, tDiff.color)
 				cy, cx = screen.getyx()
 				writeChart(
 					screen,
@@ -128,11 +159,8 @@ class MainModule:
 		except KeyboardInterrupt:
 			return
 		finally:
-			self.closeEvent.set()
-			self.thr.join(5)
+			self._close()
 			curses.endwin()
 	def start(self) -> None:
-		self._fetchFirst()
-		self.thr = Thread(target=self._fetchThreadLoop, daemon=True)
-		self.thr.start()
+		self._start()
 		curses.wrapper(self._loop)
