@@ -67,22 +67,6 @@ labelFormat:str=" {:8.2f} ", symbols:List[str]=["┼", "┤", "├", "│", "─
 			colorRight = "RED"
 		elif scaleLast == y:
 			colorRight = "CYAN"
-		#
-		#
-		# if scaleFirst == y:
-		# 	colorLeft = "CYAN"
-		# elif bestPrice != worstPrice:
-		# 	if bestPrice == y:
-		# 		colorLeft = "GREEN"
-		# 	if worstPrice == y:
-		# 		colorLeft = "RED"
-		# if scaleLast == y:
-		# 	colorRight = "CYAN"
-		# elif bestPrice != worstPrice:
-		# 	if bestPrice == y:
-		# 		colorRight = "GREEN"
-		# 	if worstPrice == y:
-		# 		colorRight = "RED"
 		screen.addstr(
 			yStart + y,
 			xStart,
